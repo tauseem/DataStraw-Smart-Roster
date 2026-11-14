@@ -216,7 +216,7 @@ export default function App() {
   }, 5000)
 }
 
-const notifyError = (text) => {
+const notifyError = useCallback((text) => {
   setPageNotices((previous) => ({
     ...previous,
     [activePage]: {
@@ -224,7 +224,7 @@ const notifyError = (text) => {
       text: friendlyError(text),
     },
   }))
-}
+}, [activePage])
 
   const loadEmployees = useCallback(async () => {
     const data = await apiRequest('/employees/')
@@ -286,6 +286,7 @@ const notifyError = (text) => {
     loadLeaves,
     loadAttendance,
     loadSummary,
+    notifyError
   ])
 
    useEffect(() => {
@@ -300,7 +301,7 @@ const notifyError = (text) => {
     const task = Promise.resolve().then(() => loadAssignments(selectedDate))
 
     task.catch((err) => notifyError(err.message))
-  }, [selectedDate, loadAssignments])
+  }, [selectedDate, loadAssignments, notifyError])
 
   const refreshPage = async () => {
     try {
