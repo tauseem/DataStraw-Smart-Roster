@@ -641,6 +641,32 @@ def generate_roster(roster_date):
         "generated": generated,
         "rebalanced": rebalanced,
         "shortages": shortages,
-        "skipped": skipped,
+        "skipped": dedupe_skipped(skipped),
         "conflicts": conflicts,
     }
+
+# ============================================================
+# REMOVE REPEATED SKIP ENTRIES
+# ============================================================
+
+def dedupe_skipped(items):
+
+    unique_items = []
+    seen_keys = set()
+
+    for item in items:
+
+        key = (
+            item.get("employee_id"),
+            item.get("shift"),
+            item.get("reason"),
+            str(item.get("errors")),
+        )
+
+        if key in seen_keys:
+            continue
+
+        seen_keys.add(key)
+        unique_items.append(item)
+
+    return unique_items  

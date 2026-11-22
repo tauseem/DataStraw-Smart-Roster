@@ -1,4 +1,4 @@
-# DataStraw Smart Roster
+﻿# DataStraw Smart Roster
 
 **A Full-Stack Employee Shift Scheduling and Roster Management System**
 

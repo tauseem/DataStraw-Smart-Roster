@@ -663,3 +663,72 @@ class SmartRosterAPITests(TestCase):
             "Approved leave",
             [item.get("reason") for item in response.data["skipped"]],
         )
+
+
+
+
+
+     # --------------------------------------------------
+    # SKIPPED EMPLOYEE IS NOT REPEATED FOR THE SAME SHIFT
+    # --------------------------------------------------
+
+    def test_skipped_employee_is_reported_once(self):
+
+        second_employee = Employee.objects.create(
+            employee_id="EMP002",
+            full_name="Available Employee",
+            email="available@example.com",
+            phone="9876543299",
+            brand="Test Brand",
+            process="Customer Support",
+            employment_status="ACTIVE",
+            joining_date=date(2026, 1, 1),
+        )
+
+        evening_shift = Shift.objects.create(
+            shift_name="Dedupe Evening",
+            shift_code="DEV",
+            shift_type="GENERAL",
+            start_time=time(18, 0),
+            end_time=time(23, 0),
+            break_duration=30,
+            is_active=True,
+        )
+
+        LeaveRequest.objects.create(
+            employee=self.employee,
+            start_date=self.roster_date,
+            end_date=self.roster_date,
+            reason="Approved leave",
+            status="APPROVED",
+        )
+
+        StaffingRequirement.objects.create(
+            shift=self.shift,
+            requirement_date=self.roster_date,
+            required_employees=1,
+        )
+
+        StaffingRequirement.objects.create(
+            shift=evening_shift,
+            requirement_date=self.roster_date,
+            required_employees=1,
+        )
+
+        response = self.client.post(
+            "/api/generate-roster/",
+            {"date": str(self.roster_date)},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        entries = [
+            item
+            for item in response.data["skipped"]
+            if item.get("employee_id") == "EMP001"
+        ]
+
+        shift_names = [item["shift"] for item in entries]
+
+        self.assertEqual(len(shift_names), len(set(shift_names)))
