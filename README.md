@@ -127,8 +127,8 @@ python manage.py test
 
 Latest verified test results:
 
-- Total tests: 15
-- Passed: 15
+- Total tests: 18
+- Passed: 18
 - Failed: 0
 
 ## Learning Outcomes
