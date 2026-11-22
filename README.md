@@ -162,4 +162,4 @@ Python / Django Developer | Full-Stack Developer
 
 ---
 
-*Developed as a practical full-stack software development project.*
+*Developed as a practical full-stack software development project.*git
