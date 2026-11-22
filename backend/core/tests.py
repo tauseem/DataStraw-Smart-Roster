@@ -620,3 +620,46 @@ class SmartRosterAPITests(TestCase):
             response.data["conflicts"][0]["reason"],
             "Approved leave",
         )
+
+
+    # --------------------------------------------------
+    # UNASSIGNED EMPLOYEE ON APPROVED LEAVE IS REPORTED
+    # --------------------------------------------------
+
+    def test_employee_on_approved_leave_is_not_assigned_and_is_reported(self):
+
+        LeaveRequest.objects.create(
+            employee=self.employee,
+            start_date=self.roster_date,
+            end_date=self.roster_date,
+            reason="Approved leave",
+            status="APPROVED",
+        )
+
+        StaffingRequirement.objects.create(
+            shift=self.shift,
+            requirement_date=self.roster_date,
+            required_employees=1,
+        )
+
+        response = self.client.post(
+            "/api/generate-roster/",
+            {"date": str(self.roster_date)},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.assertEqual(response.data["generated_count"], 0)
+
+        self.assertFalse(
+            ShiftAssignment.objects.filter(
+                employee=self.employee,
+                shift_date=self.roster_date,
+            ).exists()
+        )
+
+        self.assertIn(
+            "Approved leave",
+            [item.get("reason") for item in response.data["skipped"]],
+        )

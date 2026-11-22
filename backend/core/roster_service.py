@@ -288,10 +288,6 @@ def generate_roster(roster_date):
             employment_status="ACTIVE",
         ).exclude(
             id__in=assigned_employee_ids,
-        ).exclude(
-            leave_requests__status="APPROVED",
-            leave_requests__start_date__lte=roster_date,
-            leave_requests__end_date__gte=roster_date,
         ).annotate(
             recent_assignments=Count(
                 "shift_assignments",
