@@ -569,3 +569,54 @@ class SmartRosterAPITests(TestCase):
             response.data["count"],
             1
         )
+
+
+
+    # --------------------------------------------------
+    # CONFLICT: ASSIGNED EMPLOYEE ON APPROVED LEAVE
+    # --------------------------------------------------
+
+    def test_existing_assignment_on_approved_leave_is_flagged(self):
+
+        LeaveRequest.objects.create(
+            employee=self.employee,
+            start_date=self.roster_date,
+            end_date=self.roster_date,
+            reason="Approved leave",
+            status="APPROVED",
+        )
+
+        ShiftAssignment.objects.create(
+            employee=self.employee,
+            shift=self.shift,
+            shift_date=self.roster_date,
+            status="SCHEDULED",
+        )
+
+        StaffingRequirement.objects.create(
+            shift=self.shift,
+            requirement_date=self.roster_date,
+            required_employees=1,
+        )
+
+        response = self.client.post(
+            "/api/generate-roster/",
+            {"date": str(self.roster_date)},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.assertIn("conflicts", response.data)
+
+        self.assertEqual(len(response.data["conflicts"]), 1)
+
+        self.assertEqual(
+            response.data["conflicts"][0]["employee_id"],
+            "EMP001",
+        )
+
+        self.assertEqual(
+            response.data["conflicts"][0]["reason"],
+            "Approved leave",
+        )

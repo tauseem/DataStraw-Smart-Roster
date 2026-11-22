@@ -13,6 +13,7 @@ from .models import (
     PublicHoliday,
     CompOff,
     Attendance,
+    LeaveRequest,
 )
 
 from .serializers import ShiftAssignmentSerializer
@@ -36,6 +37,16 @@ def get_employee_unavailability_reason(employee, roster_date):
 
     if weekly_off:
         return "Weekly off"
+
+    leave = LeaveRequest.objects.filter(
+        employee=employee,
+        status="APPROVED",
+        start_date__lte=roster_date,
+        end_date__gte=roster_date,
+    ).exists()
+
+    if leave:
+        return "Approved leave"
 
     comp_off = CompOff.objects.filter(
         employee=employee,
@@ -179,6 +190,7 @@ def generate_roster(roster_date):
             "rebalanced": [],
             "shortages": [],
             "skipped": [],
+            "conflicts": [],
         }
 
     # --------------------------------------------------------
@@ -203,6 +215,31 @@ def generate_roster(roster_date):
     }
 
     preserved_count = len(existing_assignments)
+
+    # --------------------------------------------------------
+    # 2b. CHECK EXISTING ASSIGNMENTS FOR CONFLICTS
+    # --------------------------------------------------------
+
+    # An assignment already on the roster can still conflict
+    # with leave, weekly offs, or comp-offs. Report these
+    # instead of silently keeping them.
+
+    conflicts = []
+
+    for assignment in existing_assignments:
+
+        reason = get_employee_unavailability_reason(
+            assignment.employee,
+            roster_date,
+        )
+
+        if reason:
+            conflicts.append({
+                "employee": assignment.employee.full_name,
+                "employee_id": assignment.employee.employee_id,
+                "shift": assignment.shift.shift_name,
+                "reason": reason,
+            })
 
     # --------------------------------------------------------
     # 3. COUNT EXISTING ASSIGNMENTS
@@ -294,7 +331,7 @@ def generate_roster(roster_date):
                 if employee.id in assigned_employee_ids:
                     continue
 
-                # Check weekly off and comp-off.
+                # Check weekly off, leave, and comp-off.
                 unavailability_reason = (
                     get_employee_unavailability_reason(
                         employee,
@@ -435,7 +472,7 @@ def generate_roster(roster_date):
 
                     employee = assignment.employee
 
-                    # Check target weekly off / comp-off.
+                    # Check target weekly off, leave, and comp-off.
                     unavailability_reason = (
                         get_employee_unavailability_reason(
                             employee,
@@ -585,14 +622,16 @@ def generate_roster(roster_date):
     # 9. RETURN RESULTS
     # --------------------------------------------------------
 
+    roster_is_clean = not shortages and not conflicts
+
     return {
-        "success": len(shortages) == 0,
+        "success": roster_is_clean,
         "date": str(roster_date),
 
         "message": (
             "Roster generated successfully."
-            if not shortages
-            else "Roster generated with staffing shortages."
+            if roster_is_clean
+            else "Roster has issues that need attention."
         ),
 
         "generated_count": len(generated),
@@ -607,4 +646,5 @@ def generate_roster(roster_date):
         "rebalanced": rebalanced,
         "shortages": shortages,
         "skipped": skipped,
+        "conflicts": conflicts,
     }
