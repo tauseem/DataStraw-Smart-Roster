@@ -612,6 +612,8 @@ def generate_roster(roster_date):
                 "required": required,
                 "assigned": assigned,
                 "shortage": shortage,
+                "candidates": explain_shortage(requirement, roster_date),
+            
             })
 
     # --------------------------------------------------------
@@ -643,7 +645,90 @@ def generate_roster(roster_date):
         "shortages": shortages,
         "skipped": dedupe_skipped(skipped),
         "conflicts": conflicts,
+        "unavailable": get_unavailable_employees(roster_date),
     }
+
+
+
+
+# ============================================================
+# MONTHLY ROSTER GENERATION
+# ============================================================
+
+def generate_roster_for_month(year, month):
+
+    import calendar
+    from datetime import date
+
+    last_day = calendar.monthrange(year, month)[1]
+
+    results = []
+
+    for day in range(1, last_day + 1):
+        results.append(generate_roster(date(year, month, day)))
+
+    return {
+        "year": year,
+        "month": month,
+        "days": len(results),
+        "days_with_issues": sum(
+            1 for result in results if not result["success"]
+        ),
+        "results": results,
+    }
+
+
+
+
+# ============================================================
+# SHORTAGE EXPLANATION
+# ============================================================
+
+def explain_shortage(requirement, roster_date):
+
+    if not requirement.brand_process_id:
+        return []
+
+    allocations = EmployeeAllocation.objects.filter(
+        brand_process_id=requirement.brand_process_id,
+        is_active=True,
+        allocation_start__lte=roster_date,
+    ).filter(
+        Q(allocation_end__isnull=True)
+        | Q(allocation_end__gte=roster_date)
+    ).select_related("employee")
+
+    explanations = []
+
+    for allocation in allocations:
+
+        employee = allocation.employee
+
+        if employee.employment_status != "ACTIVE":
+            reason = "Inactive employee"
+
+        elif ShiftAssignment.objects.filter(
+            employee=employee,
+            shift_date=roster_date,
+        ).exclude(status="CANCELLED").exists():
+            reason = "Already assigned on this date"
+
+        else:
+            reason = (
+                get_employee_unavailability_reason(
+                    employee,
+                    roster_date,
+                )
+                or "Available but not assigned"
+            )
+
+        explanations.append({
+            "employee": employee.full_name,
+            "employee_id": employee.employee_id,
+            "reason": reason,
+        })
+
+    return explanations
 
 # ============================================================
 # REMOVE REPEATED SKIP ENTRIES
@@ -670,3 +755,32 @@ def dedupe_skipped(items):
         unique_items.append(item)
 
     return unique_items  
+
+
+
+
+# ============================================================
+# UNAVAILABLE EMPLOYEES FOR A DATE
+# ============================================================
+
+def get_unavailable_employees(roster_date):
+
+    results = []
+
+    for employee in Employee.objects.filter(
+        employment_status="ACTIVE",
+    ).order_by("employee_id"):
+
+        reason = get_employee_unavailability_reason(
+            employee,
+            roster_date,
+        )
+
+        if reason:
+            results.append({
+                "employee": employee.full_name,
+                "employee_id": employee.employee_id,
+                "reason": reason,
+            })
+
+    return results
