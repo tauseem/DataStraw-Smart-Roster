@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useState } from 'react'
 import './App.css'
 
@@ -78,7 +77,7 @@ async function apiRequest(endpoint, options = {}) {
   })
 
   const text = await response.text()
-    let data
+  let data
 
   try {
     data = text ? JSON.parse(text) : {}
@@ -198,33 +197,33 @@ export default function App() {
   })
 
   const notify = (text) => {
-  const page = activePage
+    const page = activePage
 
-  setPageNotices((previous) => ({
-    ...previous,
-    [page]: { type: 'success', text },
-  }))
+    setPageNotices((previous) => ({
+      ...previous,
+      [page]: { type: 'success', text },
+    }))
 
-  window.setTimeout(() => {
-    setPageNotices((previous) => {
-      if (previous[page]?.text !== text) return previous
+    window.setTimeout(() => {
+      setPageNotices((previous) => {
+        if (previous[page]?.text !== text) return previous
 
-      const updated = { ...previous }
-      delete updated[page]
-      return updated
-    })
-  }, 5000)
-}
+        const updated = { ...previous }
+        delete updated[page]
+        return updated
+      })
+    }, 5000)
+  }
 
-const notifyError = useCallback((text) => {
-  setPageNotices((previous) => ({
-    ...previous,
-    [activePage]: {
-      type: 'error',
-      text: friendlyError(text),
-    },
-  }))
-}, [activePage])
+  const notifyError = useCallback((text) => {
+    setPageNotices((previous) => ({
+      ...previous,
+      [activePage]: {
+        type: 'error',
+        text: friendlyError(text),
+      },
+    }))
+  }, [activePage])
 
   const loadEmployees = useCallback(async () => {
     const data = await apiRequest('/employees/')
@@ -289,7 +288,7 @@ const notifyError = useCallback((text) => {
     notifyError
   ])
 
-   useEffect(() => {
+  useEffect(() => {
     const task = Promise.resolve().then(() => loadAll())
 
     return () => {
@@ -547,7 +546,6 @@ const notifyError = useCallback((text) => {
     setAssignmentModal(true)
   }
 
-  
   const saveAssignment = async (event) => {
     event.preventDefault()
     setSaving(true)
@@ -615,7 +613,6 @@ const notifyError = useCallback((text) => {
       setSaving(false)
     }
   }
-
 
   const cancelAssignment = async (assignment) => {
     if (!window.confirm(`Cancel assignment for ${assignment.employee_name}?`)) return
@@ -1132,6 +1129,7 @@ const notifyError = useCallback((text) => {
             <div><strong>{generationResult.preserved_count ?? 0}</strong><span>Preserved assignments</span></div>
             <div><strong>{generationResult.total_assigned ?? 0}</strong><span>Total assigned</span></div>
           </div>
+
           {generationResult.shortages?.length > 0 && (
             <div className="alert alert-warning">
               <strong>Staffing shortages</strong>
@@ -1140,6 +1138,25 @@ const notifyError = useCallback((text) => {
               ))}
             </div>
           )}
+
+          {generationResult.conflicts?.length > 0 && (
+            <div className="alert alert-warning">
+              <strong>Conflicts: assigned employees who are unavailable</strong>
+              {generationResult.conflicts.map((item, index) => (
+                <p key={index}>{item.employee} on {item.shift}: {item.reason}</p>
+              ))}
+            </div>
+          )}
+
+          {generationResult.unavailable?.length > 0 && (
+            <details className="details-block">
+              <summary>Unavailable employees ({generationResult.unavailable.length})</summary>
+              {generationResult.unavailable.map((item, index) => (
+                <p key={index}>{item.employee} — {item.reason}</p>
+              ))}
+            </details>
+          )}
+
           {generationResult.skipped?.length > 0 && (
             <details className="details-block">
               <summary>View skipped employees ({generationResult.skipped.length})</summary>
@@ -1513,34 +1530,34 @@ const notifyError = useCallback((text) => {
         </header>
 
         <div className="content-area">
-  {pageNotices[activePage] && (
-    <div
-      className={`toast ${
-        pageNotices[activePage].type === 'error'
-          ? 'toast-error'
-          : 'toast-success'
-      }`}
-      role="alert"
-    >
-      <span>
-        {pageNotices[activePage].type === 'error' ? '⚠' : '✓'}
-      </span>
-      {pageNotices[activePage].text}
-      <button
-        className="notice-close"
-        onClick={() =>
-          setPageNotices((previous) => {
-            const updated = { ...previous }
-            delete updated[activePage]
-            return updated
-          })
-        }
-        aria-label="Dismiss notification"
-      >
-        ×
-      </button>
-    </div>
-  )}
+          {pageNotices[activePage] && (
+            <div
+              className={`toast ${
+                pageNotices[activePage].type === 'error'
+                  ? 'toast-error'
+                  : 'toast-success'
+              }`}
+              role="alert"
+            >
+              <span>
+                {pageNotices[activePage].type === 'error' ? '⚠' : '✓'}
+              </span>
+              {pageNotices[activePage].text}
+              <button
+                className="notice-close"
+                onClick={() =>
+                  setPageNotices((previous) => {
+                    const updated = { ...previous }
+                    delete updated[activePage]
+                    return updated
+                  })
+                }
+                aria-label="Dismiss notification"
+              >
+                ×
+              </button>
+            </div>
+          )}
 
           {loading ? (
             <div className="loading-state"><div className="loader" />Loading workspace data...</div>
