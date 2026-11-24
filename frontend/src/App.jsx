@@ -1131,24 +1131,31 @@ export default function App() {
             <div><strong>{generationResult.total_assigned ?? 0}</strong><span>Total assigned</span></div>
           </div>
 
-          {generationResult.shortages?.length > 0 && (
+
+                    {generationResult.shortages?.length > 0 && (
             <div className="alert alert-warning">
               <strong>Staffing shortages</strong>
               {generationResult.shortages.map((item, index) => (
                 <div key={index}>
-                <div key={index}>
                   <p>{item.shift}: {item.assigned}/{item.required} assigned — shortage {item.shortage}</p>
-                  {item.candidates?.map((c, i) => (
-                    <p key={i}>&nbsp;&nbsp;{c.employee} ({c.employee_id}): {c.reason}</p>
-                  ))}
+                  {item.candidates?.length > 0 && (
+                    <>
+                      <p><em>Allocated employees</em></p>
+                      {item.candidates.map((c, i) => (
+                        <p key={i}>&nbsp;&nbsp;{c.employee} ({c.employee_id}): {c.reason}</p>
+                      ))}
+                    </>
+                  )}
+                  {item.backups?.length > 0 && (
+                    <>
+                      <p><em>Suggested backups (need an allocation first)</em></p>
+                      {item.backups.map((b, i) => (
+                        <p key={i}>&nbsp;&nbsp;{b.employee} ({b.employee_id}): {b.note}</p>
+                      ))}
+                    </>
+                  )}
                 </div>
-
-
-                  {item.candidates?.map((c, i) => (
-                    <p key={i}>&nbsp;&nbsp;{c.employee} ({c.employee_id}): {c.reason}</p>
-                  ))}
-                </div>
-))}
+              ))}
             </div>
           )}
 
