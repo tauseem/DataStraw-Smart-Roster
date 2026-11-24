@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import './App.css'
-
+import MonthlyRoster from './MonthlyRoster'
 const API = '/api'
 function friendlyError(message) {
   const text = String(message || '').toLowerCase()
@@ -320,6 +320,7 @@ export default function App() {
     { name: 'Employees', icon: '♙', section: 'WORKFORCE' },
     { name: 'Shifts', icon: '◷', section: 'WORKFORCE' },
     { name: 'Staffing', icon: '▤', section: 'WORKFORCE' },
+    { name: 'Monthly Roster', icon: '▤', section: 'SCHEDULING' },
     { name: 'Roster', icon: '▦', section: 'SCHEDULING' },
     { name: 'Leave Management', icon: '▧', section: 'SCHEDULING' },
     { name: 'Attendance', icon: '✓', section: 'SCHEDULING' },
@@ -1134,8 +1135,20 @@ export default function App() {
             <div className="alert alert-warning">
               <strong>Staffing shortages</strong>
               {generationResult.shortages.map((item, index) => (
-                <p key={index}>{item.shift}: {item.assigned}/{item.required} assigned — shortage {item.shortage}</p>
-              ))}
+                <div key={index}>
+                <div key={index}>
+                  <p>{item.shift}: {item.assigned}/{item.required} assigned — shortage {item.shortage}</p>
+                  {item.candidates?.map((c, i) => (
+                    <p key={i}>&nbsp;&nbsp;{c.employee} ({c.employee_id}): {c.reason}</p>
+                  ))}
+                </div>
+
+
+                  {item.candidates?.map((c, i) => (
+                    <p key={i}>&nbsp;&nbsp;{c.employee} ({c.employee_id}): {c.reason}</p>
+                  ))}
+                </div>
+))}
             </div>
           )}
 
@@ -1477,6 +1490,7 @@ export default function App() {
     Shifts: renderShifts,
     Staffing: renderStaffing,
     Roster: renderRoster,
+    'Monthly Roster': () => <MonthlyRoster />,
     'Leave Management': renderLeaves,
     Attendance: renderAttendance,
   }

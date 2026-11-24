@@ -1,3 +1,4 @@
+from .monthly_views import monthly_roster_api
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
@@ -93,5 +94,10 @@ urlpatterns = [
         "dashboard-summary/",
         dashboard_summary_api,
         name="dashboard-summary"
+    ),
+    path(
+        "monthly-roster/",
+        monthly_roster_api,
+        name="monthly-roster"
     ),
 ]
