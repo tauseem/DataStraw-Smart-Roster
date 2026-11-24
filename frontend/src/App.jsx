@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import './App.css'
 import MonthlyRoster from './MonthlyRoster'
+import BrandsAndProcesses from './MasterData'
+import PodsAndAllocations from './PodsAllocations'
 const API = '/api'
 function friendlyError(message) {
   const text = String(message || '').toLowerCase()
@@ -321,6 +323,8 @@ export default function App() {
     { name: 'Shifts', icon: '◷', section: 'WORKFORCE' },
     { name: 'Staffing', icon: '▤', section: 'WORKFORCE' },
     { name: 'Monthly Roster', icon: '▤', section: 'SCHEDULING' },
+    { name: 'Brands & Processes', icon: '▣', section: 'WORKFORCE' },
+    { name: 'Pods & Allocations', icon: '◉', section: 'WORKFORCE' },
     { name: 'Roster', icon: '▦', section: 'SCHEDULING' },
     { name: 'Leave Management', icon: '▧', section: 'SCHEDULING' },
     { name: 'Attendance', icon: '✓', section: 'SCHEDULING' },
@@ -1498,6 +1502,8 @@ export default function App() {
     Staffing: renderStaffing,
     Roster: renderRoster,
     'Monthly Roster': () => <MonthlyRoster />,
+    'Brands & Processes': () => <BrandsAndProcesses />,
+    'Pods & Allocations': () => <PodsAndAllocations />,
     'Leave Management': renderLeaves,
     Attendance: renderAttendance,
   }
