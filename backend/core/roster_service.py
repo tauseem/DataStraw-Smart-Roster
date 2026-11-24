@@ -1,4 +1,3 @@
-
 from datetime import timedelta
 
 from django.db import transaction
@@ -19,23 +18,31 @@ from .models import (
 from .serializers import ShiftAssignmentSerializer
 
 
+PREFERRED_OFF_REASON = "Preferred weekly off"
+
+
 # ============================================================
 # EMPLOYEE AVAILABILITY
 # ============================================================
 
-def get_employee_unavailability_reason(employee, roster_date):
+def _weekly_off_applies(employee, roster_date, is_preference):
 
-    weekly_off = WeeklyOff.objects.filter(
+    return WeeklyOff.objects.filter(
         employee=employee,
         weekday=roster_date.weekday(),
         effective_from__lte=roster_date,
         is_active=True,
+        is_preference=is_preference,
     ).filter(
         Q(effective_until__isnull=True)
         | Q(effective_until__gte=roster_date)
     ).exists()
 
-    if weekly_off:
+
+def get_employee_unavailability_reason(employee, roster_date):
+    """Mandatory constraints only: weekly off, approved leave, comp-off."""
+
+    if _weekly_off_applies(employee, roster_date, is_preference=False):
         return "Weekly off"
 
     leave = LeaveRequest.objects.filter(
@@ -56,6 +63,15 @@ def get_employee_unavailability_reason(employee, roster_date):
 
     if comp_off:
         return "Approved compensatory off"
+
+    return None
+
+
+def get_preference_reason(employee, roster_date):
+    """Soft constraint: a preferred weekly off that coverage can override."""
+
+    if _weekly_off_applies(employee, roster_date, is_preference=True):
+        return PREFERRED_OFF_REASON
 
     return None
 
@@ -135,6 +151,123 @@ def employee_has_required_allocation(employee, requirement, roster_date):
 
 
 # ============================================================
+# SHORTAGE EXPLANATION
+# ============================================================
+
+def explain_shortage(requirement, roster_date):
+
+    if not requirement.brand_process_id:
+        return []
+
+    allocations = EmployeeAllocation.objects.filter(
+        brand_process_id=requirement.brand_process_id,
+        is_active=True,
+        allocation_start__lte=roster_date,
+    ).filter(
+        Q(allocation_end__isnull=True)
+        | Q(allocation_end__gte=roster_date)
+    ).select_related("employee")
+
+    explanations = []
+
+    for allocation in allocations:
+
+        employee = allocation.employee
+
+        if employee.employment_status != "ACTIVE":
+            reason = "Inactive employee"
+
+        elif ShiftAssignment.objects.filter(
+            employee=employee,
+            shift_date=roster_date,
+        ).exclude(status="CANCELLED").exists():
+            reason = "Already assigned on this date"
+
+        else:
+            reason = (
+                get_employee_unavailability_reason(
+                    employee,
+                    roster_date,
+                )
+                or get_preference_reason(employee, roster_date)
+                or "Available but not assigned"
+            )
+
+        explanations.append({
+            "employee": employee.full_name,
+            "employee_id": employee.employee_id,
+            "reason": reason,
+        })
+
+    return explanations
+
+
+def suggest_backups(requirement, roster_date, excluded_employee_ids):
+    """Available employees not allocated to this brand-process.
+
+    They need an allocation before they can be assigned, so the
+    manager decides whether to add one.
+    """
+
+    if not requirement.brand_process_id:
+        return []
+
+    backups = []
+
+    candidates = Employee.objects.filter(
+        employment_status="ACTIVE",
+    ).exclude(
+        id__in=excluded_employee_ids,
+    ).order_by("employee_id")
+
+    for employee in candidates:
+
+        if employee_has_required_allocation(employee, requirement, roster_date):
+            continue
+
+        if get_employee_unavailability_reason(employee, roster_date):
+            continue
+
+        backups.append({
+            "employee": employee.full_name,
+            "employee_id": employee.employee_id,
+            "note": "Available, but not allocated to this brand-process. Add an allocation to use.",
+        })
+
+        if len(backups) == 5:
+            break
+
+    return backups
+
+
+# ============================================================
+# UNAVAILABLE EMPLOYEES FOR A DATE
+# ============================================================
+
+def get_unavailable_employees(roster_date):
+
+    results = []
+
+    for employee in Employee.objects.filter(
+        employment_status="ACTIVE",
+    ).order_by("employee_id"):
+
+        reason = get_employee_unavailability_reason(
+            employee,
+            roster_date,
+        )
+
+        if reason:
+            results.append({
+                "employee": employee.full_name,
+                "employee_id": employee.employee_id,
+                "reason": reason,
+            })
+
+    return results
+
+
+# ============================================================
 # AUTOMATIC ROSTER GENERATION
 # ============================================================
 
@@ -145,6 +278,7 @@ def generate_roster(roster_date):
     rebalanced = []
     skipped = []
     shortages = []
+    overrides = []
 
     # --------------------------------------------------------
     # 1. GET STAFFING REQUIREMENTS
@@ -191,6 +325,8 @@ def generate_roster(roster_date):
             "shortages": [],
             "skipped": [],
             "conflicts": [],
+            "overrides": [],
+            "unavailable": [],
         }
 
     # --------------------------------------------------------
@@ -217,12 +353,11 @@ def generate_roster(roster_date):
     preserved_count = len(existing_assignments)
 
     # --------------------------------------------------------
-    # 2b. CHECK EXISTING ASSIGNMENTS FOR CONFLICTS
+    # 2b. CHECK EXISTING ASSIGNMENTS
     # --------------------------------------------------------
 
-    # An assignment already on the roster can still conflict
-    # with leave, weekly offs, or comp-offs. Report these
-    # instead of silently keeping them.
+    # Mandatory conflicts are reported. A preferred weekly off that
+    # an existing assignment overrides is reported as an override.
 
     conflicts = []
 
@@ -239,6 +374,20 @@ def generate_roster(roster_date):
                 "employee_id": assignment.employee.employee_id,
                 "shift": assignment.shift.shift_name,
                 "reason": reason,
+            })
+            continue
+
+        preference = get_preference_reason(
+            assignment.employee,
+            roster_date,
+        )
+
+        if preference:
+            overrides.append({
+                "employee": assignment.employee.full_name,
+                "employee_id": assignment.employee.employee_id,
+                "shift": assignment.shift.shift_name,
+                "reason": f"{preference} overridden: assignment kept for coverage",
             })
 
     # --------------------------------------------------------
@@ -308,117 +457,139 @@ def generate_roster(roster_date):
     # 6. ASSIGN AVAILABLE EMPLOYEES
     # --------------------------------------------------------
 
-    progress = True
+    # Pass 1 fills requirements without using preferred weekly offs.
+    # Pass 2 runs only for requirements still short, and may use
+    # preferred offs, which are then reported as overrides.
 
-    while progress:
+    for allow_preferred_off in (False, True):
 
-        progress = False
+        progress = True
 
-        for requirement in requirements:
+        while progress:
 
-            shift = requirement.shift
-            requirement_key = get_requirement_key(requirement)
+            progress = False
 
-            if remaining_needs[requirement_key] <= 0:
-                continue
+            for requirement in requirements:
 
-            for employee in employees:
+                shift = requirement.shift
+                requirement_key = get_requirement_key(requirement)
 
-                if employee.id in assigned_employee_ids:
+                if remaining_needs[requirement_key] <= 0:
                     continue
 
-                # Check weekly off, leave, and comp-off.
-                unavailability_reason = (
-                    get_employee_unavailability_reason(
+                for employee in employees:
+
+                    if employee.id in assigned_employee_ids:
+                        continue
+
+                    unavailability_reason = (
+                        get_employee_unavailability_reason(
+                            employee,
+                            roster_date,
+                        )
+                    )
+
+                    if unavailability_reason:
+
+                        skipped.append({
+                            "employee": employee.full_name,
+                            "employee_id": employee.employee_id,
+                            "shift": shift.shift_name,
+                            "reason": unavailability_reason,
+                        })
+
+                        continue
+
+                    preference_reason = get_preference_reason(
                         employee,
                         roster_date,
                     )
-                )
 
-                if unavailability_reason:
+                    if preference_reason and not allow_preferred_off:
+                        continue
+
+                    if not employee_has_required_allocation(
+                        employee,
+                        requirement,
+                        roster_date,
+                    ):
+
+                        skipped.append({
+                            "employee": employee.full_name,
+                            "employee_id": employee.employee_id,
+                            "shift": shift.shift_name,
+                            "reason": (
+                                "Not allocated to the required "
+                                "brand/process"
+                            ),
+                        })
+
+                        continue
+
+                    assignment_data = {
+                        "employee": employee.id,
+                        "shift": shift.id,
+                        "brand_process": requirement.brand_process_id,
+                        "shift_date": roster_date,
+                        "status": "SCHEDULED",
+                    }
+
+                    serializer = ShiftAssignmentSerializer(
+                        data=assignment_data
+                    )
+
+                    if serializer.is_valid():
+
+                        assignment = serializer.save()
+
+                        generated.append({
+                            "assignment_id": assignment.id,
+                            "employee": employee.full_name,
+                            "employee_id": employee.employee_id,
+                            "shift": shift.shift_name,
+                            "brand": (
+                                requirement.brand_process.brand.name
+                                if requirement.brand_process
+                                else None
+                            ),
+                            "process": (
+                                requirement.brand_process.process.name
+                                if requirement.brand_process
+                                else None
+                            ),
+                            "date": str(roster_date),
+                        })
+
+                        if preference_reason:
+                            overrides.append({
+                                "employee": employee.full_name,
+                                "employee_id": employee.employee_id,
+                                "shift": shift.shift_name,
+                                "reason": (
+                                    f"{preference_reason} overridden: "
+                                    "assigned because coverage was short"
+                                ),
+                            })
+
+                        assigned_employee_ids.add(employee.id)
+
+                        assigned_counts[requirement_key] += 1
+                        remaining_needs[requirement_key] -= 1
+
+                        progress = True
+                        break
 
                     skipped.append({
                         "employee": employee.full_name,
                         "employee_id": employee.employee_id,
                         "shift": shift.shift_name,
-                        "reason": unavailability_reason,
+                        "errors": serializer.errors,
                     })
-
-                    continue
-
-                # Check brand/process allocation.
-                if not employee_has_required_allocation(
-                    employee,
-                    requirement,
-                    roster_date,
-                ):
-
-                    skipped.append({
-                        "employee": employee.full_name,
-                        "employee_id": employee.employee_id,
-                        "shift": shift.shift_name,
-                        "reason": (
-                            "Not allocated to the required "
-                            "brand/process"
-                        ),
-                    })
-
-                    continue
-
-                assignment_data = {
-                    "employee": employee.id,
-                    "shift": shift.id,
-                    "brand_process": requirement.brand_process_id,
-                    "shift_date": roster_date,
-                    "status": "SCHEDULED",
-                }
-
-                serializer = ShiftAssignmentSerializer(
-                    data=assignment_data
-                )
-
-                if serializer.is_valid():
-
-                    assignment = serializer.save()
-
-                    generated.append({
-                        "assignment_id": assignment.id,
-                        "employee": employee.full_name,
-                        "employee_id": employee.employee_id,
-                        "shift": shift.shift_name,
-                        "brand": (
-                            requirement.brand_process.brand.name
-                            if requirement.brand_process
-                            else None
-                        ),
-                        "process": (
-                            requirement.brand_process.process.name
-                            if requirement.brand_process
-                            else None
-                        ),
-                        "date": str(roster_date),
-                    })
-
-                    assigned_employee_ids.add(employee.id)
-
-                    assigned_counts[requirement_key] += 1
-                    remaining_needs[requirement_key] -= 1
-
-                    progress = True
-                    break
-
-                skipped.append({
-                    "employee": employee.full_name,
-                    "employee_id": employee.employee_id,
-                    "shift": shift.shift_name,
-                    "errors": serializer.errors,
-                })
 
     # --------------------------------------------------------
     # 7. AUTOMATIC SHIFT REBALANCING
     # --------------------------------------------------------
 
-    # Rebalance only after trying to use unassigned employees.
     # Only scheduled assignments without attendance can be moved.
 
     for target_requirement in requirements:
@@ -429,7 +600,6 @@ def generate_roster(roster_date):
 
             donor_found = False
 
-            # Look for another requirement with surplus staff.
             for donor_requirement in requirements:
 
                 donor_key = get_requirement_key(donor_requirement)
@@ -445,7 +615,6 @@ def generate_roster(roster_date):
                 if donor_surplus <= 0:
                     continue
 
-                # Find an eligible existing assignment to move.
                 donor_assignments = [
                     assignment
                     for assignment in existing_assignments
@@ -459,16 +628,13 @@ def generate_roster(roster_date):
 
                 for assignment in donor_assignments:
 
-                    # Never move an assignment that already has attendance.
                     if Attendance.objects.filter(
                         assignment=assignment
                     ).exists():
-
                         continue
 
                     employee = assignment.employee
 
-                    # Check target weekly off, leave, and comp-off.
                     unavailability_reason = (
                         get_employee_unavailability_reason(
                             employee,
@@ -479,7 +645,6 @@ def generate_roster(roster_date):
                     if unavailability_reason:
                         continue
 
-                    # Check target brand/process allocation.
                     if not employee_has_required_allocation(
                         employee,
                         target_requirement,
@@ -501,7 +666,6 @@ def generate_roster(roster_date):
                         else None
                     )
 
-                    # Update the existing assignment.
                     update_data = {
                         "shift": target_requirement.shift_id,
                         "brand_process": (
@@ -521,9 +685,7 @@ def generate_roster(roster_date):
                             "employee": employee.full_name,
                             "employee_id": employee.employee_id,
                             "shift": target_requirement.shift.shift_name,
-                            "reason": (
-                                "Rebalancing validation failed"
-                            ),
+                            "reason": "Rebalancing validation failed",
                             "errors": serializer.errors,
                         })
 
@@ -531,7 +693,22 @@ def generate_roster(roster_date):
 
                     updated_assignment = serializer.save()
 
-                    # Update in-memory assignment information.
+                    preference = get_preference_reason(
+                        employee,
+                        roster_date,
+                    )
+
+                    if preference:
+                        overrides.append({
+                            "employee": employee.full_name,
+                            "employee_id": employee.employee_id,
+                            "shift": target_requirement.shift.shift_name,
+                            "reason": (
+                                f"{preference} overridden: moved to "
+                                "cover a shortage"
+                            ),
+                        })
+
                     assignment.shift = target_requirement.shift
                     assignment.shift_id = (
                         target_requirement.shift_id
@@ -545,7 +722,6 @@ def generate_roster(roster_date):
                         target_requirement.brand_process_id
                     )
 
-                    # Update staffing counts.
                     assigned_counts[donor_key] -= 1
                     assigned_counts[target_key] += 1
 
@@ -578,7 +754,6 @@ def generate_roster(roster_date):
                 if donor_found:
                     break
 
-            # No eligible surplus employee was available.
             if not donor_found:
                 break
 
@@ -612,8 +787,15 @@ def generate_roster(roster_date):
                 "required": required,
                 "assigned": assigned,
                 "shortage": shortage,
-                "candidates": explain_shortage(requirement, roster_date),
-            
+                "candidates": explain_shortage(
+                    requirement,
+                    roster_date,
+                ),
+                "backups": suggest_backups(
+                    requirement,
+                    roster_date,
+                    assigned_employee_ids,
+                ),
             })
 
     # --------------------------------------------------------
@@ -645,10 +827,36 @@ def generate_roster(roster_date):
         "shortages": shortages,
         "skipped": dedupe_skipped(skipped),
         "conflicts": conflicts,
+        "overrides": overrides,
         "unavailable": get_unavailable_employees(roster_date),
     }
 
 
+# ============================================================
+# REMOVE REPEATED SKIP ENTRIES
+# ============================================================
+
+def dedupe_skipped(items):
+
+    unique_items = []
+    seen_keys = set()
+
+    for item in items:
+
+        key = (
+            item.get("employee_id"),
+            item.get("shift"),
+            item.get("reason"),
+            str(item.get("errors")),
+        )
+
+        if key in seen_keys:
+            continue
+
+        seen_keys.add(key)
+        unique_items.append(item)
+
+    return unique_items
 
 
 # ============================================================
@@ -676,111 +884,3 @@ def generate_roster_for_month(year, month):
         ),
         "results": results,
     }
-
-
-
-
-# ============================================================
-# SHORTAGE EXPLANATION
-# ============================================================
-
-def explain_shortage(requirement, roster_date):
-
-    if not requirement.brand_process_id:
-        return []
-
-    allocations = EmployeeAllocation.objects.filter(
-        brand_process_id=requirement.brand_process_id,
-        is_active=True,
-        allocation_start__lte=roster_date,
-    ).filter(
-        Q(allocation_end__isnull=True)
-        | Q(allocation_end__gte=roster_date)
-    ).select_related("employee")
-
-    explanations = []
-
-    for allocation in allocations:
-
-        employee = allocation.employee
-
-        if employee.employment_status != "ACTIVE":
-            reason = "Inactive employee"
-
-        elif ShiftAssignment.objects.filter(
-            employee=employee,
-            shift_date=roster_date,
-        ).exclude(status="CANCELLED").exists():
-            reason = "Already assigned on this date"
-
-        else:
-            reason = (
-                get_employee_unavailability_reason(
-                    employee,
-                    roster_date,
-                )
-                or "Available but not assigned"
-            )
-
-        explanations.append({
-            "employee": employee.full_name,
-            "employee_id": employee.employee_id,
-            "reason": reason,
-        })
-
-    return explanations
-
-# ============================================================
-# REMOVE REPEATED SKIP ENTRIES
-# ============================================================
-
-def dedupe_skipped(items):
-
-    unique_items = []
-    seen_keys = set()
-
-    for item in items:
-
-        key = (
-            item.get("employee_id"),
-            item.get("shift"),
-            item.get("reason"),
-            str(item.get("errors")),
-        )
-
-        if key in seen_keys:
-            continue
-
-        seen_keys.add(key)
-        unique_items.append(item)
-
-    return unique_items  
-
-
-
-
-# ============================================================
-# UNAVAILABLE EMPLOYEES FOR A DATE
-# ============================================================
-
-def get_unavailable_employees(roster_date):
-
-    results = []
-
-    for employee in Employee.objects.filter(
-        employment_status="ACTIVE",
-    ).order_by("employee_id"):
-
-        reason = get_employee_unavailability_reason(
-            employee,
-            roster_date,
-        )
-
-        if reason:
-            results.append({
-                "employee": employee.full_name,
-                "employee_id": employee.employee_id,
-                "reason": reason,
-            })
-
-    return results

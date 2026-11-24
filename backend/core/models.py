@@ -292,15 +292,20 @@ class WeeklyOff(models.Model):
     )
 
     is_active = models.BooleanField(default=True)
+    # False: mandatory weekly off. True: preference that coverage can override.
+    is_preference = models.BooleanField(default=False)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["employee__full_name", "weekday"]
 
     def __str__(self):
+        kind = "preferred" if self.is_preference else "mandatory"
+
         return (
             f"{self.employee.full_name} - "
-            f"{self.get_weekday_display()} off"
+            f"{self.get_weekday_display()} off ({kind})"
         )
 
 

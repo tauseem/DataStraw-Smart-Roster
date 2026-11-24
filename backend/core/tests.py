@@ -732,3 +732,79 @@ class SmartRosterAPITests(TestCase):
         shift_names = [item["shift"] for item in entries]
 
         self.assertEqual(len(shift_names), len(set(shift_names)))
+
+
+    # --------------------------------------------------
+    # PREFERRED WEEKLY OFF IS OVERRIDDEN WHEN COVERAGE NEEDS IT
+    # --------------------------------------------------
+
+    def test_preferred_weekly_off_is_overridden_when_needed(self):
+
+        WeeklyOff.objects.create(
+            employee=self.employee,
+            weekday=self.roster_date.weekday(),
+            effective_from=self.roster_date,
+            is_active=True,
+            is_preference=True,
+        )
+
+        StaffingRequirement.objects.create(
+            shift=self.shift,
+            requirement_date=self.roster_date,
+            required_employees=1,
+        )
+
+        response = self.client.post(
+            "/api/generate-roster/",
+            {"date": str(self.roster_date)},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["generated_count"], 1)
+        self.assertEqual(len(response.data["overrides"]), 1)
+
+    # --------------------------------------------------
+    # PREFERRED WEEKLY OFF IS AVOIDED WHEN AN ALTERNATIVE EXISTS
+    # --------------------------------------------------
+
+    def test_preferred_weekly_off_is_avoided_when_alternative_exists(self):
+
+        Employee.objects.create(
+            employee_id="PREF002",
+            full_name="Available Alternative",
+            email="alternative@example.com",
+            phone="9876543298",
+            brand="Test Brand",
+            process="Customer Support",
+            employment_status="ACTIVE",
+            joining_date=date(2026, 1, 1),
+        )
+
+        WeeklyOff.objects.create(
+            employee=self.employee,
+            weekday=self.roster_date.weekday(),
+            effective_from=self.roster_date,
+            is_active=True,
+            is_preference=True,
+        )
+
+        StaffingRequirement.objects.create(
+            shift=self.shift,
+            requirement_date=self.roster_date,
+            required_employees=1,
+        )
+
+        response = self.client.post(
+            "/api/generate-roster/",
+            {"date": str(self.roster_date)},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["generated_count"], 1)
+        self.assertEqual(
+            response.data["generated"][0]["employee_id"],
+            "PREF002",
+        )
+        self.assertEqual(response.data["overrides"], []) 

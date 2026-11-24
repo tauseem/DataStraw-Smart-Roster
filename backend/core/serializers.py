@@ -1,4 +1,3 @@
-
 from datetime import datetime, timedelta
 
 from django.db.models import Q
@@ -212,6 +211,7 @@ class ShiftAssignmentSerializer(serializers.ModelSerializer):
             employee=employee,
             weekday=shift_date.weekday(),
             effective_from__lte=shift_date,
+            is_preference=False,
             is_active=True
         ).filter(
             Q(effective_until__isnull=True)
@@ -464,9 +464,9 @@ class AttendanceSerializer(serializers.ModelSerializer):
             getattr(self.instance, "check_out", None)
         )
 
-        shift_assignment = attrs.get(
-            "shift_assignment",
-            getattr(self.instance, "shift_assignment", None)
+        assignment = attrs.get(
+            "assignment",
+            getattr(self.instance, "assignment", None)
         )
 
         if check_in and check_out and check_out <= check_in:
@@ -475,8 +475,8 @@ class AttendanceSerializer(serializers.ModelSerializer):
             )
 
         if (
-            shift_assignment
-            and shift_assignment.status == "CANCELLED"
+            assignment
+            and assignment.status == "CANCELLED"
         ):
             raise serializers.ValidationError(
                 "Attendance cannot be recorded for a cancelled assignment."
