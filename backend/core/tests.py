@@ -12,6 +12,11 @@ from .models import (
     Attendance,
     WeeklyOff,
     CompOff,
+    Brand,
+    Process,
+    BrandProcess,
+    EmployeeAllocation,
+    PublicHoliday,
 )
 
 
@@ -808,3 +813,96 @@ class SmartRosterAPITests(TestCase):
             "PREF002",
         )
         self.assertEqual(response.data["overrides"], []) 
+
+    # --------------------------------------------------
+    # MANUAL EDIT: WEEKLY OFF IS REJECTED
+    # --------------------------------------------------
+
+    def test_manual_assignment_rejected_on_weekly_off(self):
+
+        WeeklyOff.objects.create(
+            employee=self.employee,
+            weekday=self.roster_date.weekday(),
+            effective_from=self.roster_date,
+            is_active=True,
+        )
+
+        response = self.client.post(
+            "/api/assignments/",
+            {
+                "employee": self.employee.id,
+                "shift": self.shift.id,
+                "shift_date": str(self.roster_date),
+                "status": "SCHEDULED",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    # --------------------------------------------------
+    # MANUAL EDIT: OVERLAPPING SHIFT IS REJECTED
+    # --------------------------------------------------
+
+    def test_manual_assignment_rejected_when_overlapping(self):
+
+        ShiftAssignment.objects.create(
+            employee=self.employee,
+            shift=self.shift,
+            shift_date=self.roster_date,
+            status="SCHEDULED",
+        )
+
+        response = self.client.post(
+            "/api/assignments/",
+            {
+                "employee": self.employee.id,
+                "shift": self.shift.id,
+                "shift_date": str(self.roster_date),
+                "status": "SCHEDULED",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    # --------------------------------------------------
+    # MANUAL EDIT: HOLIDAY-OFF BRAND ON A PUBLIC HOLIDAY IS REJECTED
+    # --------------------------------------------------
+
+    def test_manual_assignment_rejected_on_holiday_for_holiday_off_brand(self):
+
+        brand = Brand.objects.create(name="Holiday Brand", code="HOL")
+        process = Process.objects.create(name="Holiday Process", code="HP")
+
+        brand_process = BrandProcess.objects.create(
+            brand=brand,
+            process=process,
+            holiday_policy="OFF",
+        )
+
+        EmployeeAllocation.objects.create(
+            employee=self.employee,
+            brand_process=brand_process,
+            allocation_start=date(2026, 1, 1),
+        )
+
+        PublicHoliday.objects.create(
+            name="Test Holiday",
+            holiday_date=self.roster_date,
+            region="IN",
+        )
+
+        response = self.client.post(
+            "/api/assignments/",
+            {
+                "employee": self.employee.id,
+                "shift": self.shift.id,
+                "brand_process": brand_process.id,
+                "shift_date": str(self.roster_date),
+                "status": "SCHEDULED",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)

@@ -61,7 +61,7 @@ EMPLOYEE_NAMES = [
 
 # Brands B01-B19 have one dedicated employee and one process each.
 SINGLE_PROCESSES = ["CS", "ACC", "RET", "NDR"]
-SINGLE_PATTERNS = [(ALL_DAYS, "WORK"), (NO_SUNDAY, "OFF")]
+SINGLE_PATTERNS = [(ALL_DAYS, "WORK"), (ALL_DAYS, "OFF"), (NO_SUNDAY, "OFF")]
 
 # Brands B20-B24 have several employees, split by process.
 MULTI_BRAND_LAYOUTS = [
@@ -80,7 +80,7 @@ def build_plan():
     for i in range(1, 20):
         brand_code = f"B{i:02d}"
         process_code = SINGLE_PROCESSES[(i - 1) % 4]
-        working_days, holiday_policy = SINGLE_PATTERNS[(i - 1) % 2]
+        working_days, holiday_policy = SINGLE_PATTERNS[(i - 1) % 3]
         key = f"{brand_code}-{process_code}"
 
         bp_specs[key] = {
@@ -234,9 +234,9 @@ class Command(BaseCommand):
         )
 
         PublicHoliday.objects.get_or_create(
-            holiday_date=date(2026, 12, 25),
+            holiday_date=date(2026, 12, 31),
             region="IN",
-            defaults={"name": "Christmas Day"},
+            defaults={"name": "New Year's Eve"},
         )
 
         self.stdout.write(self.style.SUCCESS(
