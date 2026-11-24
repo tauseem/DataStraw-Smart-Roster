@@ -3,8 +3,8 @@
 **A Full-Stack Employee Shift Scheduling and Roster Management System**
 
 ## Introduction
-
-DataStraw Smart Roster is a web-based employee shift scheduling and roster management application designed to simplify workforce planning and improve scheduling efficiency.
+DataStraw Smart Roster plans and validates monthly rosters for an operations team that runs several D2C brands, each with its own processes, working days, and coverage rules. It separates each brand's operating calendar from individual employee schedules, generates rosters that respect weekly offs, leave, comp-offs, and public holidays, and reports shortages and conflicts instead of producing an invalid roster.
+and roster management application designed to simplify workforce planning and improve scheduling efficiency.
 
 The application provides a centralized platform where administrators can manage employee information, create and organize shift assignments, handle leave requests, and maintain employee schedules.
 
@@ -145,13 +145,69 @@ This project demonstrates practical experience in:
 
 ## Future Enhancements
 
-- Cloud deployment
+
 - Advanced scheduling optimization
 - Enhanced analytics and reporting
 - Role-based access control
 - Improved dashboard visualizations
 
+
+## How the System Works
+
+**Modelling.** Employees, brands, processes, and pods are separate models. `BrandProcess` is the operating unit: it holds the brand's working days, public holiday policy, and minimum staffing. `EmployeeAllocation` links an employee to one or more brand-processes and a pod. Weekly offs, leave, and comp-offs belong to the employee, so brand calendars and individual schedules are kept apart.
+
+**Generation.** For a given date, the generator collects staffing requirements for brand-processes that operate that day, keeps existing assignments, fills remaining gaps from unassigned active employees who are allocated to that brand-process and not on a weekly off, leave, or comp-off, and then moves surplus staff from over-covered requirements to under-covered ones. Shifts with attendance are never moved.
+
+**Constraints.** Coverage, availability, and allocation are checked for every assignment the generator creates or moves, and also for assignments already on the roster. A roster is reported as successful only when it has no shortages and no conflicts.
+
+**Single-resource and multi-employee brands.** A single-resource brand has one allocated employee. If that person is unavailable, the generator reports a shortage for the brand-process and does not silently leave the gap. Multi-employee brands draw from a shared pool, and surplus staff can be rebalanced.
+
+**Unavailable sole employee.** The shortage is listed with the required and assigned counts. The fix is to add a backup allocation for the brand-process, then regenerate. Existing assignments are preserved, so only the gap is filled.
+
+**Conflicts and insufficient staffing.** Each problem is returned as a structured item (shortage or conflict) with the reason, so nothing is hidden. Mandatory constraints are coverage and availability. Preferences are not yet modelled.
+
+**Automated vs. human.** The system generates rosters, detects conflicts, and applies rebalancing. A manager still reviews the shortages and decides whether to add backups or change assignments. There is no approval workflow yet.
+
+**If the company doubled.** Move the public holiday region into configuration, add a draft and publish state with an approval step, replace the greedy assignment with an optimisation approach, and add query indexes on dates and allocations.
+
+**With one more week.** Model preferred weekly offs separately from mandatory constraints, validate manual edits through the same checks as generated assignments, and add a change-impact view that shows which brands lose coverage when someone becomes unavailable.
+
+
 ## Developer
+## Tell Us How You Think
+
+**1. How did you model employees, brands, processes, pods, and their relationships?**
+Brands, processes, and pods are separate models. A `BrandProcess` is the operating unit: it holds a brand's working days, public holiday policy, and minimum staffing. An `EmployeeAllocation` links an employee to one brand-process and a pod, so one employee can serve several brand-processes. Weekly offs, leave, and comp-offs belong to the employee, so the brand's operating calendar is kept separate from individual schedules.
+
+**2. How does your system generate a roster and determine whether it satisfies the constraints?**
+For a date, the generator collects requirements for brand-processes that operate that day, keeps existing assignments, fills gaps from active employees who are allocated to that brand-process and are not on a weekly off, leave, or comp-off, and then moves surplus staff to under-covered requirements. A roster is reported as successful only when it has no shortages and no conflicts. Existing assignments are also checked, so someone already rostered on leave is flagged.
+
+**3. How did you handle single-resource brands and brands with several employees?**
+Both use the same model. Single-resource brands have one allocated employee, so if that person is unavailable the shortage is reported with the required and assigned counts, and the candidate list explains why each allocated employee is unavailable. Multi-employee brands draw from a shared pool, and surplus staff can be rebalanced to under-covered requirements. Shifts with attendance are never moved.
+
+**4. What happens when an employee manages all processes for a brand but is unavailable on a required working day?**
+The generator reports a shortage for that brand-process, lists its allocated employees with their reasons, and returns the result as unsuccessful. The sample data demonstrates this: DS001 is the only employee for a single-resource brand and is on approved leave on 7 December 2026. The fix is to add a backup allocation for that brand-process and regenerate. Existing assignments are preserved, so only the gap is filled.
+
+**5. How does your system handle conflicting requirements or insufficient staffing?**
+Each issue is returned as a structured item: shortages with counts, conflicts for existing assignments, and unavailable employees with reasons. Nothing is hidden or silently dropped. Mandatory constraints are coverage, leave, weekly offs, comp-offs, allocation, and one shift per employee per day. Preferences are not yet modelled, so a preferred weekly off currently behaves the same as a mandatory one. This is listed as a limitation below.
+
+**6. Which parts did you automate, and which did you leave under human control? Why?**
+The system generates rosters, detects conflicts, rebalances surplus staff, and produces the monthly coverage view. A manager still reviews shortages and decides on backups, manual edits, and approvals. I kept those decisions human because a backup choice depends on skills and context the data doesn't capture, and an automatic change could silently break another brand.
+
+**7. If the company doubled its team and brand count, what would you change?**
+I would move the public holiday region into configuration, add a draft and publish state with an approval step, replace the greedy assignment with an optimisation approach, and add database indexes on dates and allocations. Monthly generation would also run as a background job rather than a request.
+
+**8. If you had one additional week, what would you improve first?**
+I would model preferred weekly offs separately from mandatory constraints, so coverage takes priority as the assignment requires. Next, I would validate manual edits through the same checks as generated assignments, and add a change-impact view that shows which brands lose coverage when someone becomes unavailable.
+
+## Known Limitations
+
+- An employee can hold only one shift per day, so covering two processes on the same day is not supported.
+- Single-resource brands handle one process each in the sample data.
+- Public holidays use a fixed region code (`IN`).
+- Preferences and a draft or publish state are not implemented.
+- The free hosting tier resets the database on restart, so the sample data reloads on each start.
+
 
 **Tauseem Shaikh**
 
