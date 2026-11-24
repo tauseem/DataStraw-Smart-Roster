@@ -1,4 +1,8 @@
-import { useEffect, useState } from 'react'
+
+import { useCallback, useEffect, useState } from 'react'
+
+const INITIAL_YEAR = 2026
+const INITIAL_MONTH = 12
 
 const VIEWS = [
   ['company', 'Company'],
@@ -8,6 +12,33 @@ const VIEWS = [
   ['coverage', 'Coverage'],
   ['employees', 'Employees'],
 ]
+
+// API request helper
+async function requestMonth(method, year, month) {
+  const response = await fetch(
+    method === 'POST'
+      ? '/api/monthly-roster/'
+      : `/api/monthly-roster/?year=${year}&month=${month}`,
+    method === 'POST'
+      ? {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            year: Number(year),
+            month: Number(month),
+          }),
+        }
+      : {}
+  )
+
+  const result = await response.json()
+
+  if (!response.ok) {
+    throw new Error(result.message || 'Request failed.')
+  }
+
+  return result
+}
 
 function formatDate(value) {
   return new Date(`${value}T00:00:00`).toLocaleDateString('en-IN', {
@@ -30,6 +61,7 @@ function summarizeByEmployee(rows = []) {
         days: 0,
       }
     }
+
     map[row.employee_id].days += 1
   })
 
@@ -38,6 +70,7 @@ function summarizeByEmployee(rows = []) {
   )
 }
 
+// Employee table
 function EmployeeTable({ rows }) {
   if (!rows.length) {
     return <div className="empty-state">No assignments.</div>
@@ -56,6 +89,7 @@ function EmployeeTable({ rows }) {
             <th>Days worked</th>
           </tr>
         </thead>
+
         <tbody>
           {rows.map((row) => (
             <tr key={row.employee_id}>
@@ -73,11 +107,16 @@ function EmployeeTable({ rows }) {
   )
 }
 
+// Company view
 function CompanyView({ data }) {
   const days = Object.entries(data.company)
 
   if (!days.length) {
-    return <div className="empty-state">No assignments this month. Generate the month first.</div>
+    return (
+      <div className="empty-state">
+        No assignments this month. Generate the month first.
+      </div>
+    )
   }
 
   return days.map(([day, rows]) => (
@@ -86,6 +125,7 @@ function CompanyView({ data }) {
         <summary>
           <strong>{formatDate(day)}</strong> — {rows.length} working
         </summary>
+
         <div className="table-wrap">
           <table>
             <thead>
@@ -97,6 +137,7 @@ function CompanyView({ data }) {
                 <th>Shift</th>
               </tr>
             </thead>
+
             <tbody>
               {rows.map((row) => (
                 <tr key={row.assignment_id}>
@@ -115,6 +156,7 @@ function CompanyView({ data }) {
   ))
 }
 
+// Pods view
 function PodsView({ data }) {
   const pods = Object.entries(data.pods)
 
@@ -125,13 +167,18 @@ function PodsView({ data }) {
   return pods.map(([pod, rows]) => (
     <section className="panel" key={pod}>
       <div className="panel-heading">
-        <div><h2>{pod}</h2><p>Lead: {data.pod_leads?.[pod] || 'Not set'}</p></div>
+        <div>
+          <h2>{pod}</h2>
+          <p>Lead: {data.pod_leads?.[pod] || 'Not set'}</p>
+        </div>
       </div>
+
       <EmployeeTable rows={summarizeByEmployee(rows)} />
     </section>
   ))
 }
 
+// Brands view
 function BrandsView({ data }) {
   const brands = Object.keys(data.brand_coverage).sort()
 
@@ -142,16 +189,33 @@ function BrandsView({ data }) {
   return brands.map((brand) => (
     <section className="panel" key={brand}>
       <div className="panel-heading">
-        <div><h2>{brand}</h2><p>Assigned employees and daily coverage</p></div>
+        <div>
+          <h2>{brand}</h2>
+          <p>Assigned employees and daily coverage</p>
+        </div>
       </div>
-      <EmployeeTable rows={summarizeByEmployee(data.brands[brand] || [])} />
+
+      <EmployeeTable
+        rows={summarizeByEmployee(data.brands[brand] || [])}
+      />
+
       <details className="details-block">
-        <summary>Daily coverage ({data.brand_coverage[brand].length} slots)</summary>
+        <summary>
+          Daily coverage ({data.brand_coverage[brand].length} slots)
+        </summary>
+
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>Date</th><th>Process</th><th>Required</th><th>Assigned</th><th>Status</th></tr>
+              <tr>
+                <th>Date</th>
+                <th>Process</th>
+                <th>Required</th>
+                <th>Assigned</th>
+                <th>Status</th>
+              </tr>
             </thead>
+
             <tbody>
               {data.brand_coverage[brand].map((item, index) => (
                 <tr key={index}>
@@ -159,7 +223,11 @@ function BrandsView({ data }) {
                   <td>{item.process}</td>
                   <td>{item.required}</td>
                   <td>{item.assigned}</td>
-                  <td><span className={`status-badge status-${item.status.toLowerCase()}`}>{item.status}</span></td>
+                  <td>
+                    <span className={`status-badge status-${item.status.toLowerCase()}`}>
+                      {item.status}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -170,6 +238,7 @@ function BrandsView({ data }) {
   ))
 }
 
+// Processes view
 function ProcessesView({ data }) {
   const processes = Object.entries(data.processes)
 
@@ -180,13 +249,18 @@ function ProcessesView({ data }) {
   return processes.map(([process, rows]) => (
     <section className="panel" key={process}>
       <div className="panel-heading">
-        <div><h2>{process}</h2><p>Staff and working days for this process</p></div>
+        <div>
+          <h2>{process}</h2>
+          <p>Staff and working days for this process</p>
+        </div>
       </div>
+
       <EmployeeTable rows={summarizeByEmployee(rows)} />
     </section>
   ))
 }
 
+// Coverage view
 function CoverageView({ data, shortOnly, setShortOnly }) {
   const items = data.coverage.filter((item) =>
     shortOnly ? item.status === 'SHORT' : true
@@ -195,25 +269,39 @@ function CoverageView({ data, shortOnly, setShortOnly }) {
   return (
     <section className="panel">
       <div className="panel-heading">
-        <div><h2>Coverage</h2><p>Required versus assigned on each working day</p></div>
+        <div>
+          <h2>Coverage</h2>
+          <p>Required versus assigned on each working day</p>
+        </div>
+
         <label className="checkbox-label">
           <input
             type="checkbox"
             checked={shortOnly}
             onChange={(e) => setShortOnly(e.target.checked)}
-          />{' '}
-          Show shortages only
+          />
+          {' '}Show shortages only
         </label>
       </div>
 
       {items.length === 0 ? (
-        <div className="empty-state">No matching coverage slots.</div>
+        <div className="empty-state">
+          No matching coverage slots.
+        </div>
       ) : (
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>Date</th><th>Brand</th><th>Process</th><th>Required</th><th>Assigned</th><th>Status</th></tr>
+              <tr>
+                <th>Date</th>
+                <th>Brand</th>
+                <th>Process</th>
+                <th>Required</th>
+                <th>Assigned</th>
+                <th>Status</th>
+              </tr>
             </thead>
+
             <tbody>
               {items.map((item, index) => (
                 <tr key={index}>
@@ -222,7 +310,11 @@ function CoverageView({ data, shortOnly, setShortOnly }) {
                   <td>{item.process}</td>
                   <td>{item.required}</td>
                   <td>{item.assigned}</td>
-                  <td><span className={`status-badge status-${item.status.toLowerCase()}`}>{item.status}</span></td>
+                  <td>
+                    <span className={`status-badge status-${item.status.toLowerCase()}`}>
+                      {item.status}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -233,10 +325,18 @@ function CoverageView({ data, shortOnly, setShortOnly }) {
   )
 }
 
-function EmployeesView({ data, selectedEmployee, setSelectedEmployee }) {
+// Employees view
+function EmployeesView({
+  data,
+  selectedEmployee,
+  setSelectedEmployee,
+}) {
   const employees = data.employees || []
+
   const current =
-    employees.find((item) => item.employee_id === selectedEmployee) || employees[0]
+    employees.find(
+      (item) => item.employee_id === selectedEmployee
+    ) || employees[0]
 
   if (!current) {
     return <div className="empty-state">No employees found.</div>
@@ -248,15 +348,22 @@ function EmployeesView({ data, selectedEmployee, setSelectedEmployee }) {
         <div>
           <h2>{current.employee}</h2>
           <p>
-            Weekly off: {current.weekly_offs.length ? current.weekly_offs.join(', ') : 'None'}
+            Weekly off:{' '}
+            {current.weekly_offs.length
+              ? current.weekly_offs.join(', ')
+              : 'None'}
           </p>
         </div>
+
         <select
           value={current.employee_id}
           onChange={(e) => setSelectedEmployee(e.target.value)}
         >
           {employees.map((item) => (
-            <option key={item.employee_id} value={item.employee_id}>
+            <option
+              key={item.employee_id}
+              value={item.employee_id}
+            >
               {item.employee_id} — {item.employee}
             </option>
           ))}
@@ -266,8 +373,13 @@ function EmployeesView({ data, selectedEmployee, setSelectedEmployee }) {
       <div className="table-wrap">
         <table>
           <thead>
-            <tr><th>Date</th><th>Status</th><th>Detail</th></tr>
+            <tr>
+              <th>Date</th>
+              <th>Status</th>
+              <th>Detail</th>
+            </tr>
           </thead>
+
           <tbody>
             {current.calendar.map((day) => (
               <tr key={day.date}>
@@ -283,41 +395,26 @@ function EmployeesView({ data, selectedEmployee, setSelectedEmployee }) {
   )
 }
 
+// Main Monthly Roster component
 export default function MonthlyRoster() {
-  const [year, setYear] = useState(2026)
-  const [month, setMonth] = useState(12)
+  const [year, setYear] = useState(INITIAL_YEAR)
+  const [month, setMonth] = useState(INITIAL_MONTH)
   const [view, setView] = useState('company')
   const [data, setData] = useState(null)
   const [selectedEmployee, setSelectedEmployee] = useState('')
   const [shortOnly, setShortOnly] = useState(false)
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState(true)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
 
-  const fetchMonth = async (method) => {
+  // Manual load and generation
+  const fetchMonth = useCallback(async (method) => {
     setBusy(true)
     setError('')
     setMessage('')
 
     try {
-      const response = await fetch(
-        method === 'POST'
-          ? '/api/monthly-roster/'
-          : `/api/monthly-roster/?year=${year}&month=${month}`,
-        method === 'POST'
-          ? {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ year: Number(year), month: Number(month) }),
-            }
-          : {}
-      )
-
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result.message || 'Request failed.')
-      }
+      const result = await requestMonth(method, year, month)
 
       setData(result)
 
@@ -327,16 +424,43 @@ export default function MonthlyRoster() {
         )
       }
     } catch (err) {
-      setError(err.message)
+      setError(err.message || 'Something went wrong.')
     } finally {
       setBusy(false)
     }
-  }
+  }, [year, month])
 
+  // Initial roster loading
   useEffect(() => {
-    fetchMonth('GET')
-    // Load once when the page opens.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let cancelled = false
+
+    async function loadInitialMonth() {
+      try {
+        const result = await requestMonth(
+          'GET',
+          INITIAL_YEAR,
+          INITIAL_MONTH
+        )
+
+        if (!cancelled) {
+          setData(result)
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err.message || 'Failed to load monthly roster.')
+        }
+      } finally {
+        if (!cancelled) {
+          setBusy(false)
+        }
+      }
+    }
+
+    loadInitialMonth()
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   return (
@@ -344,45 +468,92 @@ export default function MonthlyRoster() {
       <div className="page-header">
         <div>
           <h1>Monthly Roster</h1>
-          <p>Company, pod, brand, process, coverage, and employee views for the month.</p>
+          <p>
+            Company, pod, brand, process, coverage, and employee views for the month.
+          </p>
         </div>
       </div>
 
       <section className="panel">
         <div className="roster-toolbar">
-          <label>Year
-            <input type="number" value={year} onChange={(e) => setYear(e.target.value)} />
+          <label>
+            Year
+            <input
+              type="number"
+              value={year}
+              onChange={(e) => setYear(e.target.value)}
+            />
           </label>
-          <label>Month
-            <input type="number" min="1" max="12" value={month} onChange={(e) => setMonth(e.target.value)} />
+
+          <label>
+            Month
+            <input
+              type="number"
+              min="1"
+              max="12"
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
+            />
           </label>
-          <button className="btn btn-secondary" onClick={() => fetchMonth('GET')} disabled={busy}>
+
+          <button
+            className="btn btn-secondary"
+            onClick={() => fetchMonth('GET')}
+            disabled={busy}
+          >
             Load Month
           </button>
-          <button className="btn btn-primary" onClick={() => fetchMonth('POST')} disabled={busy}>
+
+          <button
+            className="btn btn-primary"
+            onClick={() => fetchMonth('POST')}
+            disabled={busy}
+          >
             {busy ? 'Working...' : 'Generate Whole Month'}
           </button>
         </div>
+
         {message && <p>{message}</p>}
-        {error && <div className="alert alert-warning">{error}</div>}
+
+        {error && (
+          <div className="alert alert-warning">
+            {error}
+          </div>
+        )}
       </section>
 
       {!data ? (
-        <div className="empty-state">Loading monthly roster...</div>
+        <div className="empty-state">
+          {error ? 'Unable to load monthly roster.' : 'Loading monthly roster...'}
+        </div>
       ) : (
         <>
           <div className="stats-grid compact-stats">
             <div className="stat-card">
-              <div className="stat-card-top"><span>Assignments</span></div>
-              <div className="stat-value">{data.summary.assignments}</div>
+              <div className="stat-card-top">
+                <span>Assignments</span>
+              </div>
+              <div className="stat-value">
+                {data.summary.assignments}
+              </div>
             </div>
+
             <div className="stat-card">
-              <div className="stat-card-top"><span>Working slots</span></div>
-              <div className="stat-value">{data.summary.working_slots}</div>
+              <div className="stat-card-top">
+                <span>Working slots</span>
+              </div>
+              <div className="stat-value">
+                {data.summary.working_slots}
+              </div>
             </div>
+
             <div className="stat-card">
-              <div className="stat-card-top"><span>Short slots</span></div>
-              <div className="stat-value">{data.summary.short_slots}</div>
+              <div className="stat-card-top">
+                <span>Short slots</span>
+              </div>
+              <div className="stat-value">
+                {data.summary.short_slots}
+              </div>
             </div>
           </div>
 
@@ -398,13 +569,30 @@ export default function MonthlyRoster() {
             ))}
           </div>
 
-          {view === 'company' && <CompanyView data={data} />}
-          {view === 'pods' && <PodsView data={data} />}
-          {view === 'brands' && <BrandsView data={data} />}
-          {view === 'processes' && <ProcessesView data={data} />}
-          {view === 'coverage' && (
-            <CoverageView data={data} shortOnly={shortOnly} setShortOnly={setShortOnly} />
+          {view === 'company' && (
+            <CompanyView data={data} />
           )}
+
+          {view === 'pods' && (
+            <PodsView data={data} />
+          )}
+
+          {view === 'brands' && (
+            <BrandsView data={data} />
+          )}
+
+          {view === 'processes' && (
+            <ProcessesView data={data} />
+          )}
+
+          {view === 'coverage' && (
+            <CoverageView
+              data={data}
+              shortOnly={shortOnly}
+              setShortOnly={setShortOnly}
+            />
+          )}
+
           {view === 'employees' && (
             <EmployeesView
               data={data}
