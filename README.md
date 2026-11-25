@@ -182,7 +182,6 @@ This project demonstrates practical experience in:
 - Single-resource brands are the brands with one allocated employee, which is about 80% of the sample brands.
 - The sample dataset covers December 2026 and uses 30 employees, 24 brands, 4 processes, and 4 pods.
 
-## Developer
 ## Tell Us How You Think
 
 **1. How did you model employees, brands, processes, pods, and their relationships?**
@@ -231,3 +230,4 @@ Python / Django Developer | Full-Stack Developer
 ---
 
 *Developed as a practical full-stack software development project.*gitgitgi
+## Developer
