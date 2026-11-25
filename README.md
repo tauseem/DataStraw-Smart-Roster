@@ -173,6 +173,15 @@ This project demonstrates practical experience in:
 **With one more week.** Model preferred weekly offs separately from mandatory constraints, validate manual edits through the same checks as generated assignments, and add a change-impact view that shows which brands lose coverage when someone becomes unavailable.
 
 
+## Assumptions
+
+- A brand-process operates on the working days set on it (for example Monday to Saturday), and does not operate on Sundays or on public holidays when its holiday policy is OFF.
+- Each employee works one shift per day, so an employee cannot cover two brand-processes on the same day.
+- Weekly offs are mandatory unless marked as preferred. Leave and comp-offs are always mandatory.
+- Coverage requirements are set per brand-process per date. The sample data uses a minimum of one or two employees per brand-process.
+- Single-resource brands are the brands with one allocated employee, which is about 80% of the sample brands.
+- The sample dataset covers December 2026 and uses 30 employees, 24 brands, 4 processes, and 4 pods.
+
 ## Developer
 ## Tell Us How You Think
 
@@ -189,7 +198,8 @@ Both use the same model. Single-resource brands have one allocated employee, so 
 The generator reports a shortage for that brand-process, lists its allocated employees with their reasons, and returns the result as unsuccessful. The sample data demonstrates this: DS001 is the only employee for a single-resource brand and is on approved leave on 7 December 2026. The fix is to add a backup allocation for that brand-process and regenerate. Existing assignments are preserved, so only the gap is filled.
 
 **5. How does your system handle conflicting requirements or insufficient staffing?**
-Each issue is returned as a structured item: shortages with counts, conflicts for existing assignments, and unavailable employees with reasons. Nothing is hidden or silently dropped. Mandatory constraints are coverage, leave, weekly offs, comp-offs, allocation, and one shift per employee per day. Preferences are not yet modelled, so a preferred weekly off currently behaves the same as a mandatory one. This is listed as a limitation below.
+Each issue is returned as a structured item. Mandatory constraints (weekly off, approved leave, comp-off, allocation, and one shift per employee per day) are hard rules and produce conflicts or are skipped. Preferred weekly offs are soft: coverage can override them, and every override is listed in the roster result. Shortages report the required and assigned counts, the allocated employees with the reason each is unavailable, and suggested backups drawn from active employees who are not yet allocated to that brand-process.
+
 
 **6. Which parts did you automate, and which did you leave under human control? Why?**
 The system generates rosters, detects conflicts, rebalances surplus staff, and produces the monthly coverage view. A manager still reviews shortages and decides on backups, manual edits, and approvals. I kept those decisions human because a backup choice depends on skills and context the data doesn't capture, and an automatic change could silently break another brand.
@@ -200,14 +210,16 @@ I would move the public holiday region into configuration, add a draft and publi
 **8. If you had one additional week, what would you improve first?**
 I would model preferred weekly offs separately from mandatory constraints, so coverage takes priority as the assignment requires. Next, I would validate manual edits through the same checks as generated assignments, and add a change-impact view that shows which brands lose coverage when someone becomes unavailable.
 
+
 ## Known Limitations
 
 - An employee can hold only one shift per day, so covering two processes on the same day is not supported.
-- Single-resource brands handle one process each in the sample data.
+- Each single-resource brand in the sample data handles one process, and the sample has no spare cover on those brands. Shortages are expected and are reported rather than hidden.
 - Public holidays use a fixed region code (`IN`).
-- Preferences and a draft or publish state are not implemented.
+- There is no draft or publish state. Conflicts and shortages are shown before a roster is treated as final, but the system does not lock a roster.
+- Backup suggestions list employees who are not allocated to the brand-process. A manager must add an allocation before that person can be assigned.
+- The change demo is a sequence of actions (approve leave, regenerate, review backups), not a single button.
 - The free hosting tier resets the database on restart, so the sample data reloads on each start.
-
 
 **Tauseem Shaikh**
 
