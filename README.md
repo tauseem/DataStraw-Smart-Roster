@@ -178,6 +178,22 @@ This project demonstrates practical experience in:
 
 **With one more week.** Model preferred weekly offs separately from mandatory constraints, validate manual edits through the same checks as generated assignments, and add a change-impact view that shows which brands lose coverage when someone becomes unavailable.
 
+## Screenshots
+
+### Dashboard
+![Dashboard](docs/screenshots/dashboard.png)
+
+### Roster: shortage explained, unavailable employee listed
+![Roster shortage](docs/screenshots/roster-shortage.png)
+
+### Monthly coverage: shortages only
+![Monthly coverage](docs/screenshots/monthly-coverage.png)
+
+### Weekly offs: mandatory and preferred
+![Weekly offs](docs/screenshots/weekly-offs.png)
+
+### Leave management
+![Leave management](docs/screenshots/leave-management.png)
 
 ## Assumptions
 
