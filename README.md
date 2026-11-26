@@ -1,5 +1,11 @@
 ﻿# DataStraw Smart Roster
 
+**Live demo:** https://datastraw-smart-roster.onrender.com/
+
+**API health check:** https://datastraw-smart-roster.onrender.com/api/health/
+
+*The free hosting tier sleeps when idle, so the first request can take about a minute.*
+
 **A Full-Stack Employee Shift Scheduling and Roster Management System**
 
 ## Introduction
